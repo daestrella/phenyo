@@ -8,21 +8,18 @@ import argparse
 class NoMorePossibleGuessError(Exception):
     pass
 
-class NoGoodOffspringError(Exception):
-    pass
-
 class Guess:
     alphabet  = string.ascii_lowercase + string.ascii_uppercase
     history   = []
     cx_rate   = 0.80
     mn_counts = [   0,    1,    2,    3]
     mn_rates  = [4/10, 3/10, 2/10, 1/10]
-    retries   = 1000                            # attempts before giving up generating compatible words
+    retries   = 5                            # attempts before giving up generating compatible words
     tolerance = 0.01
 
     def __init__(self, string=None):
         self.string = Guess.deviate(string) if string else Guess.generate_string()
-        self.correctness = Game.how_close_to_the_word(self.string)
+        self.correctness = Checker.how_close_to_the_word(self.string)
 
     def is_fit_with(self, guess):
         '''Checks whether two guesses are compatible to each other, i.e.,
@@ -31,17 +28,15 @@ class Guess:
         if self.correctness == guess.correctness == 0:
             return True
 
-        return self.correctness < (guess.correctness - 1 + (guess.correctness * Guess.tolerance *
-                                                            (Game.limit - Game.attempt) / (Game.limit * 2)))
+        return self.correctness < (guess.correctness - 1 + (guess.correctness * Guess.tolerance / Game.attempt))
 
     @staticmethod
     def deviate(string):
         '''Add slight variation to the guess string through mutation.'''
 
-        # "Gaussian" mutation
         mutation_count = random.choices(Guess.mn_counts, weights=Guess.mn_rates, k=1)[0]
 
-        if mutation_count == 0 or len(Game.string) < 4:
+        if mutation_count == 0 or len(Checker.string) < 4:
             return string
 
         mutated_string = list(string)
@@ -53,7 +48,7 @@ class Guess:
 
     @staticmethod
     def generate_string():
-        return ''.join(random.choices(Guess.alphabet, k=len(Game.string)))
+        return ''.join(random.choices(Guess.alphabet, k=len(Checker.string)))
         
     @classmethod
     def infer_from_last_attempt(cls):
@@ -68,26 +63,24 @@ class Guess:
         
         string1, string2 = list(previous1.string), list(previous2.string)
 
+        # k-point crossover (lower points = higher probability (1/(k+1)))
         try:
             for _ in range(Guess.retries):
-                # k-point crossover (lower points = higher probability (1/(k+1)))
-                cx_num = random.choices([*range(1, len(Game.string)+1)],
-                                        weights=[1/(i+1) for i, _ in enumerate(Game.string)],
-                                        k=1)[0]
+                cx_num = random.choices([*range(1, len(Checker.string)+1)],
+                                        weights=[1/(i+1) for i, _ in enumerate(Checker.string)],k=1)[0]
 
-                for i in range(0, len(Game.string), len(Game.string)//cx_num):
+                for i in range(0, len(Checker.string), len(Checker.string)//cx_num):
                     if i == 0:
                         continue
                     string1, string2 = string1[:i] + string2[i:], string2[:i] + string1[i:]
 
                 inference1, inference2 = cls(''.join(string1)), cls(''.join(string2))
-
                 if min(inference1.correctness, inference2.correctness) < min(previous1.correctness, previous2.correctness):
                     break
             else:
-                raise NoGoodOffspringError
-        except NoGoodOffspringError:
-            return cls(previous1.string) if previous1.correctness < previous2.correctness else cls(previous2.string)
+                raise NoMorePossibleGuessError
+        except NoMorePossibleGuessError:
+            return previous1 if previous1.correctness < previous2.correctness else previous2
 
         return inference1 if inference1.correctness < inference2.correctness else inference2
 
@@ -115,21 +108,50 @@ class Guess:
         Guess.history.append([guess1, guess2])
         return guess1 if guess1.correctness < guess2.correctness else guess2
 
+class Checker:
+    @staticmethod
+    def how_close_to_the_word(string):
+        return sum((ord(string_char) - ord(game_char)) ** 2
+                   for string_char, game_char in zip(string, Checker.string))
+
 class Game:
-    attempt = 1
+    attempt = 0
     history = []
 
-    def __init__(self, limit, string):
-        Game.limit  = limit
-        Game.string = string
+    @staticmethod
+    def start(string):
+        Checker.string = string
 
-    def start(self):
-        for _ in range(Game.limit):
-            Game.history.append(Guess.guess())
-            Game.plot()
-            Game.attempt += 1
+        Game.find_next()
+
+        while Game.history[-1].correctness != 0:
+            Game.find_next()
+
+        Game.plot()
         plot.show()
         Game.show_history()
+
+    @staticmethod
+    def find_next():
+        Game.attempt += 1
+        if not Game.history:    # attempt 1
+            Game.history.append(Guess.guess())
+            return
+        
+        guess = Guess.guess()
+        if guess.correctness < Game.history[-1].correctness:
+            Game.history.append(guess)
+        else:
+            Game.history.append(Game.history[-1])
+    
+    @staticmethod
+    def show_history():
+        print(tabulate(
+            [(i, guess.string, guess.correctness)
+            for i, guess in enumerate(Game.history, start=1)],
+            headers=['Generation', 'Best Guess', 'Cost Value'],
+            tablefmt='simple')
+              )
     
     @staticmethod
     def show_history():
@@ -141,15 +163,10 @@ class Game:
               )
 
     @staticmethod
-    def how_close_to_the_word(string):
-        return sum((ord(string_char) - ord(game_char)) ** 2
-                   for string_char, game_char in zip(string, Game.string))
-
-    @staticmethod
     def plot():
         '''plot fitness value from Game.history to generation number'''
         plot.clf()
-        plot.plot(range(1, Game.attempt + 1), [best.correctness for best in Game.history], marker='o')
+        plot.plot(range(1, Game.attempt + 1), [best.correctness for best in Game.history], linestyle='-')
         plot.xlabel('Generation')
         plot.ylabel('Fitness value')
         plot.title(f'Genetic algorithm: word guessing (current: {Game.history[-1].correctness})')
@@ -166,8 +183,7 @@ def is_valid_string(string):
     return all(char.islower() or char.isupper() for char in string)
 
 parser = argparse.ArgumentParser(description='Pinoy henyo guessing game')
-parser.add_argument('N', type=natural, help='number of guessing generations')
 parser.add_argument('word', type=str, help='the word to be guessed')
 
 args = parser.parse_args()
-Game(args.N, args.word).start()
+Game.start(args.word)

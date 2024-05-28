@@ -4,7 +4,7 @@ Pinoy Henyo (a Filipino word guessing game, basically) implemented using genetic
 
 To run phenyo:
 ```
-./phenyo.py [N] [word]
+python phenyo.py [N] [word]
 ```
 where `[N]` represents the number of generations to run the algorithm.
 
