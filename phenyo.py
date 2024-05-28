@@ -14,7 +14,7 @@ class Guess:
     cx_rate   = 0.80
     mn_counts = [   0,    1,    2,    3]
     mn_rates  = [4/10, 3/10, 2/10, 1/10]
-    retries   = 5                            # attempts before giving up generating compatible words
+    retries   = 5                           # attempts before giving up generating compatible words
     tolerance = 0.01
 
     def __init__(self, string=None):
@@ -52,11 +52,8 @@ class Guess:
         
     @classmethod
     def infer_from_last_attempt(cls):
-        '''Combine guesses from previous attempt through crossover.'''
+        '''Combines guesses from previous attempt through crossover.'''
         previous1, previous2 = Guess.history[-1]
-
-        if (previous1.correctness == 0) or (previous2.correctness == 0):
-            return previous1 if previous1.correctness == 0 else previous2
 
         if random.random() > Guess.cx_rate:
             return cls(previous1.string) if previous1.correctness < previous2.correctness else cls(previous2.string)
@@ -127,9 +124,8 @@ class Game:
         while Game.history[-1].correctness != 0:
             Game.find_next()
 
-        Game.plot()
-        plot.show()
         Game.show_history()
+        Game.plot()
 
     @staticmethod
     def find_next():
@@ -152,32 +148,18 @@ class Game:
             headers=['Generation', 'Best Guess', 'Cost Value'],
             tablefmt='simple')
               )
-    
-    @staticmethod
-    def show_history():
-        print(tabulate(
-            [(i, guess.string, guess.correctness)
-            for i, guess in enumerate(Game.history, start=1)],
-            headers=['Generation', 'Best Guess', 'Cost Value'],
-            tablefmt='simple')
-              )
 
     @staticmethod
     def plot():
         '''plot fitness value from Game.history to generation number'''
-        plot.clf()
+        plot.rcParams['toolbar'] = 'None'
         plot.plot(range(1, Game.attempt + 1), [best.correctness for best in Game.history], linestyle='-')
         plot.xlabel('Generation')
         plot.ylabel('Fitness value')
         plot.title(f'Genetic algorithm: word guessing (current: {Game.history[-1].correctness})')
         plot.grid(True)
-        plot.draw()
+        plot.show()
         plot.pause(0.01)
-
-def natural(value):
-    if int(value) <= 0:
-        raise argparse.ArgumentTypeError(f'{value} is not a positive integer!')
-    return int(value)
 
 def is_valid_string(string):
     return all(char.islower() or char.isupper() for char in string)
